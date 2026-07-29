@@ -8,6 +8,7 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/chat-application" />
+            <option value="$PROJECT_DIR$/chat-domain" />
           </set>
         </option>
         <option name="myGradleHome" value="" />
