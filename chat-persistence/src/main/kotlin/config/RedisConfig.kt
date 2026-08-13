@@ -52,7 +52,6 @@ class RedisConfig {
                 }
             })
             setErrorHandler { t->
-                println("Redis Message Listener Error: $t")
                 t.printStackTrace()
             }
         }
