@@ -9,6 +9,17 @@
 
 ---
 
+## 2026-08-13 — `chat-persistence`의 `repository` 패키지 작성
+
+- 사용자가 `chat-server`를 참고해 Spring Data JPA 리포지토리 4개를 직접 작성:
+  - `UserRepository` (`JpaRepository<User, Long>`): `findByUsername`/`existsByUsername`, `@Modifying` 벌크 업데이트(`updateLastSeenAt`), `LIKE` 기반 사용자 검색(`searchUsers`, 페이징).
+  - `ChatRoomRepository` (`JpaRepository<ChatRoom, Long>`): 사용자가 속한 활성 채팅방 목록(`findUserChatRooms`, `ChatRoomMember` JOIN), 활성 채팅방 전체 조회, 이름 검색 쿼리 메서드.
+  - `MessageRepository` (`JpaRepository<Message, Long>`): `JOIN FETCH`로 N+1 방지한 커서 기반 페이지네이션 쿼리 세트(`findByChatRoomId`/`findMessagesBefore`/`findMessagesAfter`/`findLatestMessages`), 네이티브 쿼리로 방별 최신 메시지 1건 조회(`findLatestMessage`).
+  - `ChatRoomMemberRepository` (`CrudRepository<ChatRoomMember, Long>`): 활성 멤버 조회, 활성 멤버 수 카운트, `@Modifying`으로 방 나가기 처리(`leaveChatRoom`), 활성 멤버 존재 여부 확인.
+- 4개 모두 `package repository`로 선언되어 있어(`config`/`redis`와 동일하게 `com.chat.persistence.*` 접두사 없음) 기존에 확인된 패키지 네이밍 관례와 동일한 상태로 남아있음 — 별도 조치 없이 확인만.
+- `./gradlew clean build --warning-mode all` 전체 성공 확인 (기존 `CacheConfig.kt`의 `GenericJackson2JsonRedisSerializer` deprecation 경고 1건만 유지, 신규 이슈 없음).
+- `bcc80a0` — chat-persistence repository 패키지 추가
+
 ## 2026-07-30 — `chat-persistence`의 `config`/`redis` 패키지 작성
 
 - 사용자가 `chat-server`를 참고해 `config/RedisConfig.kt`, `config/CacheConfig.kt`, `redis/RedisMessageBroker.kt`를 직접 작성.
@@ -74,6 +85,6 @@
 |---|---|---|
 | `chat-application` | 코드 작성 완료 | 유일한 `@SpringBootApplication`, 실행 진입점 |
 | `chat-domain` | 코드 작성 완료 | 엔티티(User/ChatRoom/ChatRoomMember/Message), DTO, 서비스 인터페이스 |
-| `chat-persistence` | 작성 중 | `config`(RedisConfig/CacheConfig), `redis`(RedisMessageBroker) 완료. JPA 리포지토리·`ChatServiceImpl`/`UserServiceImpl`·`WebSocketSessionManager`는 아직 |
+| `chat-persistence` | 작성 중 | `config`(RedisConfig/CacheConfig), `redis`(RedisMessageBroker), `repository`(User/ChatRoom/Message/ChatRoomMember) 완료. `ChatServiceImpl`/`UserServiceImpl`·`WebSocketSessionManager`는 아직 |
 | `chat-websocket` | 미생성 | |
 | `chat-api` | 미생성 | |
