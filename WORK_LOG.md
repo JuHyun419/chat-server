@@ -9,6 +9,16 @@
 
 ---
 
+## 2026-08-15 — `chat-persistence`의 `service` 패키지 작성 및 `ChatRoomMemberRepository` 보완
+
+- 사용자가 `chat-server`를 참고해 `service` 패키지 2개를 직접 작성:
+  - `WebSocketSessionManager`: 서버 인스턴스 내 로컬 WebSocket 세션을 `userId -> Set<WebSocketSession>`으로 관리. `initialize()`(`@PostConstruct`)에서 `RedisMessageBroker.setLocalMessageHandler`로 콜백을 등록해 다른 인스턴스發 브로드캐스트를 로컬 세션에 전달하는 역할을 수행 — 앞서 설명했던 `localMessageHandler` 콜백 주입 설계가 실제로 연결되는 지점. `joinRoom`에서 Redis Set(`chat:server:rooms<serverId>`)으로 이 인스턴스가 구독 중인 방 목록을 추적하고, `removeSession`에서 해당 인스턴스에 연결된 사용자가 모두 사라지면 구독 해제 및 Redis Set을 정리. `sendMessageToLocalRoom`은 `ChatRoomMemberRepository.findActiveUserIdsByChatRoomId`로 활성 멤버를 조회해 로컬에 연결된 세션에만 전송하고, 전송 실패/닫힌 세션은 수집 후 일괄 제거.
+  - `MessageSequenceService`: Redis `INCR`(`opsForValue().increment`)로 채팅방별 메시지 시퀀스 번호를 원자적으로 발급하는 단순 서비스. `MessageRepository`의 `sequenceNumber` 정렬 쿼리들과 짝을 이루는 채번기.
+- 이 과정에서 `ChatRoomMemberRepository`의 `existsByChatRoomIdAndUserIdAndIsActiveTrue`를 `findActiveUserIdsByChatRoomId`(방의 활성 멤버 userId 목록 조회)로 교체 — `WebSocketSessionManager.sendMessageToLocalRoom`이 멤버 한 명씩 존재 여부를 확인하는 대신 활성 멤버 id 리스트를 한 번에 가져와 순회하는 방식으로 바뀌었기 때문.
+- `service`/`repository`/`redis` 전 패키지가 여전히 `com.chat.persistence.*` 접두사 없이 최상위 패키지(`package service`, `package repository`, `package redis`)로 선언된 상태 — 기존에 확인된 사항과 동일하게 별도 조치 없이 확인만.
+- `./gradlew clean build --warning-mode all` 전체 성공 확인 (기존 `CacheConfig.kt` deprecation 경고 1건만 유지, 신규 이슈 없음).
+- `5bdd1d2` — chat-persistence service 패키지 추가 + ChatRoomMemberRepository 보완
+
 ## 2026-08-13 — `chat-persistence`의 `repository` 패키지 작성
 
 - 사용자가 `chat-server`를 참고해 Spring Data JPA 리포지토리 4개를 직접 작성:
@@ -85,6 +95,6 @@
 |---|---|---|
 | `chat-application` | 코드 작성 완료 | 유일한 `@SpringBootApplication`, 실행 진입점 |
 | `chat-domain` | 코드 작성 완료 | 엔티티(User/ChatRoom/ChatRoomMember/Message), DTO, 서비스 인터페이스 |
-| `chat-persistence` | 작성 중 | `config`(RedisConfig/CacheConfig), `redis`(RedisMessageBroker), `repository`(User/ChatRoom/Message/ChatRoomMember) 완료. `ChatServiceImpl`/`UserServiceImpl`·`WebSocketSessionManager`는 아직 |
+| `chat-persistence` | 작성 중 | `config`(RedisConfig/CacheConfig), `redis`(RedisMessageBroker), `repository`(User/ChatRoom/Message/ChatRoomMember), `service`(WebSocketSessionManager/MessageSequenceService) 완료. `ChatServiceImpl`/`UserServiceImpl`은 아직 |
 | `chat-websocket` | 미생성 | |
 | `chat-api` | 미생성 | |
