@@ -30,5 +30,6 @@ interface ChatRoomMemberRepository : CrudRepository<ChatRoomMember, Long> {
         3. A에 대한 로그를 찍으면 X가 노출
      */
 
-    fun existsByChatRoomIdAndUserIdAndIsActiveTrue(chatRoomId: Long, userId: Long): Boolean
+    @Query("SELECT crm.user.id FROM ChatRoomMember crm WHERE crm.chatRoom.id = :chatRoomId AND crm.isActive = true")
+    fun findActiveUserIdsByChatRoomId(chatRoomId: Long): List<Long>
 }
