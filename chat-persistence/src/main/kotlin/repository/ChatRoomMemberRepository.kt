@@ -32,4 +32,6 @@ interface ChatRoomMemberRepository : CrudRepository<ChatRoomMember, Long> {
 
     @Query("SELECT crm.user.id FROM ChatRoomMember crm WHERE crm.chatRoom.id = :chatRoomId AND crm.isActive = true")
     fun findActiveUserIdsByChatRoomId(chatRoomId: Long): List<Long>
+
+    fun existsByChatRoomIdAndUserIdAndIsActiveTrue(chatRoomId: Long, userId: Long): Boolean
 }

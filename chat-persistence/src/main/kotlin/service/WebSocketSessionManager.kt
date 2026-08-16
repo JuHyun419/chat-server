@@ -119,7 +119,7 @@ class WebSocketSessionManager(
 
         if (openSession.size != sessions.size) {
             val closedSessions = sessions.filter { !it.isOpen }
-            sessions.removeAll(closedSessions)
+            sessions.removeAll(closedSessions.toSet())
 
             if (sessions.isEmpty()) {
                 userSession.remove(userId)
