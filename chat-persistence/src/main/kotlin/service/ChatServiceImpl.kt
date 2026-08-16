@@ -1,10 +1,24 @@
 package service
 
-import com.chat.domain.dto.*
-import com.chat.domain.model.*
+import com.chat.domain.dto.ChatMessage
+import com.chat.domain.dto.ChatRoomDto
+import com.chat.domain.dto.ChatRoomMemberDto
+import com.chat.domain.dto.CreateChatRoomRequest
+import com.chat.domain.dto.MessageDirection
+import com.chat.domain.dto.MessageDto
+import com.chat.domain.dto.MessagePageRequest
+import com.chat.domain.dto.MessagePageResponse
+import com.chat.domain.dto.SendMessageRequest
+import com.chat.domain.model.ChatRoom
+import com.chat.domain.model.ChatRoomMember
+import com.chat.domain.model.MemberRole
+import com.chat.domain.model.Message
+import com.chat.domain.model.MessageType
 import com.chat.domain.service.ChatService
 import org.slf4j.LoggerFactory
-import org.springframework.cache.annotation.*
+import org.springframework.cache.annotation.CacheEvict
+import org.springframework.cache.annotation.Cacheable
+import org.springframework.cache.annotation.Caching
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
@@ -25,71 +39,10 @@ class ChatServiceImpl(
     private val userRepository: UserRepository,
     private val redisMessageBroker: RedisMessageBroker,
     private val messageSequenceService: MessageSequenceService,
-    private val webSocketSessionManager: WebSocketSessionManager
+    private val webSocketSessionManager: WebSocketSessionManager,
+    private val entityDtoMapper: EntityDtoMapper,
 ) : ChatService {
     private val logger = LoggerFactory.getLogger(ChatServiceImpl::class.java)
-
-
-    @Cacheable(value = ["chatRooms"], key = "#chatRoom.id")
-    private fun chatRoomToDto(chatRoom: ChatRoom): ChatRoomDto {
-        val memberCount = chatRoomMemberRepository.countActiveMembersInRoom(chatRoom.id).toInt()
-        val lastMessage = messageRepository.findLatestMessage(chatRoom.id)?.let { messageToDto(it) }
-
-        return ChatRoomDto(
-            id = chatRoom.id,
-            name = chatRoom.name,
-            description = chatRoom.description,
-            type = chatRoom.type,
-            imageUrl = chatRoom.imageUrl,
-            isActive = chatRoom.isActive,
-            maxMembers = chatRoom.maxMembers,
-            memberCount = memberCount,
-            createdBy = userToDto(chatRoom.createdBy),
-            createdAt = chatRoom.createdAt,
-            lastMessage = lastMessage
-        )
-    }
-
-    private fun messageToDto(message: Message): MessageDto {
-        return MessageDto(
-            id = message.id,
-            chatRoomId = message.chatRoom.id,
-            sender = userToDto(message.sender),
-            type = message.type,
-            content = message.content,
-            isEdited = message.isEdited,
-            isDeleted = message.isDeleted,
-            createdAt = message.createdAt,
-            editedAt = message.editedAt,
-            sequenceNumber = message.sequenceNumber
-        )
-    }
-
-    private fun memberToDto(member: ChatRoomMember): ChatRoomMemberDto {
-        return ChatRoomMemberDto(
-            id = member.id,
-            user = userToDto(member.user),
-            role = member.role,
-            isActive = member.isActive,
-            lastReadMessageId = member.lastReadMessageId,
-            joinedAt = member.joinedAt,
-            leftAt = member.leftAt
-        )
-    }
-
-    @Cacheable(value = ["users"], key = "#user.id")
-    private fun userToDto(user: User): UserDto {
-        return UserDto(
-            id = user.id,
-            username = user.username,
-            displayName = user.displayName,
-            profileImageUrl = user.profileImageUrl,
-            status = user.status,
-            isActive = user.isActive,
-            lastSeenAt = user.lastSeenAt,
-            createdAt = user.createdAt
-        )
-    }
 
     @CacheEvict(value = ["chatRooms"], allEntries = true)
     override fun createChatRoom(
@@ -122,14 +75,14 @@ class ChatServiceImpl(
             webSocketSessionManager.joinRoom(creator.id, savedRoom.id)
         }
 
-        return chatRoomToDto(savedRoom)
+        return entityDtoMapper.chatRoomToDto(savedRoom)
     }
 
     @Cacheable(value = ["chatRooms"], key = "#roomId")
     override fun getChatRoom(roomId: Long): ChatRoomDto {
         val chatRoom = chatRoomRepository.findById(roomId)
             .orElseThrow { IllegalArgumentException("채팅방을 찾을 수 없습니다: $roomId") }
-        return chatRoomToDto(chatRoom)
+        return entityDtoMapper.chatRoomToDto(chatRoom)
     }
 
     override fun getChatRooms(
@@ -137,7 +90,7 @@ class ChatServiceImpl(
         pageable: Pageable,
     ): Page<ChatRoomDto> {
         return chatRoomRepository.findUserChatRooms(userId, pageable)
-            .map { chatRoomToDto(it) }
+            .map { entityDtoMapper.chatRoomToDto(it) }
     }
 
     override fun searchChatRooms(
@@ -150,7 +103,7 @@ class ChatServiceImpl(
             chatRoomRepository.findByNameContainingIgnoreCaseAndIsActiveTrueOrderByCreatedAtDesc(query)
         }
 
-        return chatRooms.map { chatRoomToDto(it) }
+        return chatRooms.map { entityDtoMapper.chatRoomToDto(it) }
     }
 
     @Caching(evict = [
@@ -199,7 +152,7 @@ class ChatServiceImpl(
     @Cacheable(value = ["chatRoomMembers"], key = "#roomId")
     override fun getChatRoomMembers(roomId: Long): List<ChatRoomMemberDto> {
         return chatRoomMemberRepository.findByChatRoomIdAndIsActiveTrue(roomId)
-            .map { memberToDto(it) }
+            .map { entityDtoMapper.memberToDto(it) }
     }
 
 
@@ -213,7 +166,7 @@ class ChatServiceImpl(
         }
 
         return messageRepository.findByChatRoomId(roomId, pageable)
-            .map { messageToDto(it) }
+            .map { entityDtoMapper.messageToDto(it) }
     }
 
     override fun getMessagesByCursor(
@@ -258,7 +211,7 @@ class ChatServiceImpl(
             }
         }
 
-        val messageDtos = messages.map { messageToDto(it) }
+        val messageDtos = messages.map { entityDtoMapper.messageToDto(it) }
 
         // 다음/이전 커서 계산
         val nextCursor = if (messageDtos.isNotEmpty()) messageDtos.last().id else null
@@ -326,6 +279,6 @@ class ChatServiceImpl(
             logger.error("Failed to broadcast message via Redis: ${e.message}", e)
         }
 
-        return messageToDto(savedMessage)
+        return entityDtoMapper.messageToDto(savedMessage)
     }
 }
