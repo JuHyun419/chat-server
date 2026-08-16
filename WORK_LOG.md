@@ -9,6 +9,21 @@
 
 ---
 
+## 2026-08-16 — `UserServiceImpl`/`ChatServiceImpl` 작성
+
+- 사용자가 `chat-server`를 참고해 서비스 구현체 2개를 직접 작성:
+  - `UserServiceImpl` (`UserService` 구현): 회원가입(`createUser`, username 중복 체크), 로그인(`login`, 해시 비교), 단건 조회(`getUserById`), 검색(`searchUsers`), 마지막 접속 시각 갱신(`updateLastSeen`).
+  - `ChatServiceImpl` (`ChatService` 구현): 채팅방 생성/조회/검색/입장/퇴장/멤버 조회, 메시지 오프셋 페이지네이션(`getMessages`)·커서 기반 페이지네이션(`getMessagesByCursor`)·전송(`sendMessage`). `sendMessage`는 저장 후 `WebSocketSessionManager.sendMessageToLocalRoom`으로 로컬 세션에 즉시 전달하고, `RedisMessageBroker.broadcastToRoom`으로 다른 인스턴스에 브로드캐스트(`excludeSeverId`로 자기 자신 제외) — 지금까지 작성된 `repository`/`redis`/`service` 하위 패키지 전체가 이 지점에서 실제로 연결됨.
+  - `ChatRoomMemberRepository`에 `existsByChatRoomIdAndUserIdAndIsActiveTrue`를 다시 추가(이전에 `findActiveUserIdsByChatRoomId`로 교체됐던 메서드) — `joinChatRoom`/`getMessages`/`getMessagesByCursor`의 멤버 여부 확인에 사용.
+- 코드 확인 중 발견한 이슈 (수정하지 않고 확인만 함):
+  - **`@Cacheable`이 동작하지 않음**: `chatRoomToDto`/`userToDto`가 `private fun`으로 선언된 채 `@Cacheable`이 붙어 있음. Spring의 프록시 기반 AOP는 private 메서드를 프록시할 수 없어 이 캐시 애노테이션들은 항상 무동작 — chat-server의 "캐싱 미동작" 이슈를 프로젝트 초기에 "처음부터 짚고 넘어가자"고 정했던 바로 그 문제가 재발한 것으로, 사용자에게 명시적으로 안내함. (`getChatRoom`의 public `@Cacheable`은 정상 동작.)
+  - **비밀번호 해싱 취약**: `UserServiceImpl.hashPassword`가 salt 없는 단순 SHA-256 해시 — 레인보우테이블 공격에 취약, bcrypt/scrypt/argon2 등 전용 알고리즘 아님. 역시 프로젝트 초기에 짚기로 했던 "인증 취약" 이슈와 관련.
+  - `sendMessage`의 `request.type ?: MessageType.TEXT`가 컴파일러 경고(`SendMessageRequest.type`이 이미 non-nullable) — 죽은 코드로 보임.
+  - `joinChatRoom`의 최대 인원 체크 로직이 주석 처리되어 현재 미적용 상태.
+  - `sendMessage`가 `@Transactional` 트랜잭션 커밋 전에 WebSocket 로컬 전송/Redis 브로드캐스트를 수행 — 롤백/지연 커밋 시나리오에서 일관성 이슈 여지.
+- `./gradlew clean build --warning-mode all` 전체 성공 확인 (기존 `CacheConfig.kt` 경고 + 위의 신규 `MessageType` elvis 경고, 둘 다 빌드 차단 아님).
+- `f1de565` — chat-persistence UserServiceImpl/ChatServiceImpl 추가
+
 ## 2026-08-15 — `chat-persistence`의 `service` 패키지 작성 및 `ChatRoomMemberRepository` 보완
 
 - 사용자가 `chat-server`를 참고해 `service` 패키지 2개를 직접 작성:
@@ -95,6 +110,6 @@
 |---|---|---|
 | `chat-application` | 코드 작성 완료 | 유일한 `@SpringBootApplication`, 실행 진입점 |
 | `chat-domain` | 코드 작성 완료 | 엔티티(User/ChatRoom/ChatRoomMember/Message), DTO, 서비스 인터페이스 |
-| `chat-persistence` | 작성 중 | `config`(RedisConfig/CacheConfig), `redis`(RedisMessageBroker), `repository`(User/ChatRoom/Message/ChatRoomMember), `service`(WebSocketSessionManager/MessageSequenceService) 완료. `ChatServiceImpl`/`UserServiceImpl`은 아직 |
+| `chat-persistence` | 코드 작성 완료 | `config`(RedisConfig/CacheConfig), `redis`(RedisMessageBroker), `repository`(User/ChatRoom/Message/ChatRoomMember), `service`(WebSocketSessionManager/MessageSequenceService/UserServiceImpl/ChatServiceImpl) 완료. `@Cacheable` private 메서드 무동작, 비밀번호 해싱 취약 등 알려진 이슈 있음(WORK_LOG 참고) |
 | `chat-websocket` | 미생성 | |
 | `chat-api` | 미생성 | |
